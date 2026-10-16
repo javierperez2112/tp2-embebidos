@@ -19,7 +19,10 @@
  * CONSTANT AND MACRO DEFINITIONS USING #DEFINE
  ******************************************************************************/
 
-#define CAN_MAX_DLC     8
+#define CAN_MAX_DLC         8
+
+#define MCP_TX_QUEUE_SIZE   16      // frames esperando un buffer de TX del MCP
+#define MCP_RX_QUEUE_SIZE   32      // frames recibidos esperando a la app
 
 
 /*******************************************************************************
@@ -37,6 +40,7 @@ typedef struct {
     uint32_t bitrate;       // bits/s
     uint16_t filterId;      // acepta los ID con (id & filterMask) == filterId
     uint16_t filterMask;
+    bool     loopback;      // los frames enviados vuelven a RX sin salir al bus
 } mcp_cfg_t;
 
 
@@ -45,14 +49,15 @@ typedef struct {
  ******************************************************************************/
 
 /**
- * @brief Resetea y configura el MCP25625 (bit timing, filtros, modo normal)
- * @return false si el controlador no respondio
+ * @brief Resetea y configura el MCP25625 (bit timing, filtros, modo). Usa SPI
+ *        bloqueante, asi que se puede llamar con las interrupciones apagadas.
+ * @return false si el controlador no respondio o el bitrate no es posible
  */
 bool mcpInit (const mcp_cfg_t *config);
 
 /**
- * @brief Carga un frame en un buffer de TX libre y pide su envio. No bloquea.
- * @return false si no habia buffer de TX libre
+ * @brief Encola un frame para enviar. No bloquea.
+ * @return false si la cola de TX esta llena (o el driver no se inicializo)
  */
 bool mcpSend (const can_frame_t *frame);
 
@@ -61,6 +66,11 @@ bool mcpSend (const can_frame_t *frame);
  * @return false si no habia frames recibidos
  */
 bool mcpReceive (can_frame_t *frame);
+
+/**
+ * @brief Frames recibidos que se perdieron por tener la cola de RX llena
+ */
+uint32_t mcpGetRxDropped (void);
 
 
 /*******************************************************************************
