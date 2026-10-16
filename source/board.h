@@ -1,6 +1,6 @@
 /***************************************************************************//**
   @file     board.h
-  @brief    Board management
+  @brief    Board management (FRDM-K64F + PlacaCAN por SPI)
   @author   Nicolás Magliola
  ******************************************************************************/
 
@@ -18,6 +18,9 @@
  * CONSTANT AND MACRO DEFINITIONS USING #DEFINE
  ******************************************************************************/
 
+// Numero de la funcion de un pin en PORTx_PCRn[MUX]
+#define PORT_MUX_GPIO       1
+
 /***** BOARD defines **********************************************************/
 
 // On Board User LEDs
@@ -29,32 +32,81 @@
 
 
 // On Board User Switches
-#define PIN_SW2        PORTNUM2PIN(PC,6) // PTC6
-#define PIN_SW3        PORTNUM2PIN(PA,4) // PTA4
+#define PIN_SW2         PORTNUM2PIN(PC,6) // PTC6 (compartido con FXOS8700 INT1)
+#define PIN_SW3         PORTNUM2PIN(PA,4) // PTA4
 
-#define SW_ACTIVE       // ???
-#define SW_INPUT_TYPE   // ???
+#define SW_ACTIVE       LOW             // pull-up externo en la placa, aprieta a GND
+#define SW_INPUT_TYPE   INPUT
 
-// Pin de testeo
 
-#define TEST_PIN      PORTNUM2PIN(PC, 10)
+// Pin de testeo: en alto mientras corre una ISR, para medir uso de CPU
+#define TEST_PIN        PORTNUM2PIN(PC,10) // PTC10
 
-// Pinout del lector
-#define MAGCARD_DATA_PIN       PORTNUM2PIN(PB, 10)      // DATA   - Azul  - LSB sale primero
-#define MAGCARD_CLOCK_PIN      PORTNUM2PIN(PB, 3)      // CLOCK  - Verde - dato cambia en flanco positivo
-#define MAGCARD_ENABLE_PIN     PORTNUM2PIN(PB, 2)      // ENABLE - Amarillo - bajo mientras la tarjeta desliza
 
-// Pinout del encoder
-#define PIN_ENC_A 		   	PORTNUM2PIN(PD, 1)
-#define PIN_ENC_B 		   	PORTNUM2PIN(PD, 0)
-#define PIN_ENC_C 		   	PORTNUM2PIN(PD, 2)
+/***** UART: PC (puerto COM virtual del OpenSDA) ******************************/
 
-// Pinout del display 7 segmentos (detras de la cadena de shift registers)
-#define PIN_DISP_SRQ       PORTNUM2PIN(PC, 4)  // SER    - dato serie hacia el primer 74HC595
-#define PIN_DISP_RCLK      PORTNUM2PIN(PC, 3)  // RCLK   - latch clock
-#define PIN_DISP_SRCLR     PORTNUM2PIN(PC, 2)  // SRCLR# - clear del shift stage, activo bajo
-#define PIN_DISP_SRCLK     PORTNUM2PIN(PC, 16) // SRCLK  - shift clock
-#define PIN_DISP_OE        PORTNUM2PIN(PC, 17) // OE#    - output enable, activo bajo
+#define PC_UART_ID          0                   // UART0
+#define PIN_PC_UART_RX      PORTNUM2PIN(PB,16)  // PTB16 - UART0_RX
+#define PIN_PC_UART_TX      PORTNUM2PIN(PB,17)  // PTB17 - UART0_TX
+#define PC_UART_MUX         3                   // ALT3
+
+
+/***** I2C: acelerometro/magnetometro FXOS8700CQ (en la placa) ****************/
+
+#define FXOS_I2C_ID         0                   // I2C0
+#define PIN_FXOS_SCL        PORTNUM2PIN(PE,24)  // PTE24 - I2C0_SCL
+#define PIN_FXOS_SDA        PORTNUM2PIN(PE,25)  // PTE25 - I2C0_SDA
+#define FXOS_I2C_MUX        5                   // ALT5, open drain (pull-ups en la placa)
+
+#define FXOS_I2C_ADDR       0x1D                // SA1 = 0, SA0 = 1 en la FRDM-K64F
+
+#define PIN_FXOS_INT1       PORTNUM2PIN(PC,6)   // PTC6  - compartido con SW2
+#define PIN_FXOS_INT2       PORTNUM2PIN(PC,13)  // PTC13
+
+
+/***** SPI: PlacaCAN (controller + transceiver MCP25625) **********************/
+
+/*
+ * Conexionado minimo FRDM-K64F <-> PlacaCAN (header Arduino de la FRDM):
+ *
+ *   FRDM            PlacaCAN
+ *   D10 PTD0  -->   J4.7  CS    (activo bajo, pull-up en la PlacaCAN)
+ *   D13 PTD1  -->   J4.4  SCK
+ *   D11 PTD2  -->   J4.5  MOSI  (SI del MCP25625)
+ *   D12 PTD3  <--   J4.6  MISO  (SO del MCP25625)
+ *   D2  PTB9  <--   J4.3  INT   (activo bajo)
+ *   D4  PTB23 -->   J4.8  RESET (activo bajo, pull-up en la PlacaCAN)
+ *   GND       ---   J4.1 / J4.11
+ *
+ * Jumpers de la PlacaCAN:
+ *   J7, J8: puestos (se usan controller y transceiver juntos)
+ *   J9:     VREGIO-VIO (logica a 3,3V desde el regulador de la PlacaCAN)
+ *   J5:     5V-VCAN, con VCC_CAN = 5V desde el bus
+ *   J1, J2: solo si la placa esta en un extremo del bus (terminador 120 ohm)
+ *
+ * No unir VIO ni 5V con la FRDM si la PlacaCAN ya los genera: cortocircuito.
+ */
+
+#define CAN_SPI_ID          0                   // SPI0
+#define PIN_CAN_SPI_PCS0    PORTNUM2PIN(PD,0)   // PTD0 - SPI0_PCS0
+#define PIN_CAN_SPI_SCK     PORTNUM2PIN(PD,1)   // PTD1 - SPI0_SCK
+#define PIN_CAN_SPI_SOUT    PORTNUM2PIN(PD,2)   // PTD2 - SPI0_SOUT (MOSI)
+#define PIN_CAN_SPI_SIN     PORTNUM2PIN(PD,3)   // PTD3 - SPI0_SIN  (MISO)
+#define CAN_SPI_MUX         2                   // ALT2
+#define CAN_SPI_PCS         0                   // chip select por hardware: PCS0
+
+// MCP25625: latchea en flanco ascendente, cambia en descendente -> modo 0,0 (o 1,1)
+#define CAN_SPI_CPOL        0
+#define CAN_SPI_CPHA        0
+#define CAN_SPI_MAX_HZ      10000000U           // fCLK_MAX del MCP25625
+
+#define PIN_CAN_INT         PORTNUM2PIN(PB,9)   // PTB9  - INT del MCP25625, activo bajo
+#define PIN_CAN_RESET       PORTNUM2PIN(PB,23)  // PTB23 - RESET del MCP25625, activo bajo
+
+#define CAN_INT_ACTIVE      LOW
+#define CAN_RESET_ACTIVE    LOW
+
+#define CAN_OSC_HZ          16000000U           // cristal X1 de la PlacaCAN
 
 /*******************************************************************************
  ******************************************************************************/
